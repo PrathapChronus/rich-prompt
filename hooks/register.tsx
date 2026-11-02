@@ -13,6 +13,7 @@ export const DEFAULTS: Settings = {
   spaceAfterPunct: false,
   doubleSpacePeriod: false,
   trimSpaceBeforePunct: false,
+  autocomplete: true,
 }
 
 const GROUPS: { title: string; items: { key: keyof Settings; label: string; hint: string }[] }[] = [
@@ -32,6 +33,7 @@ const GROUPS: { title: string; items: { key: keyof Settings; label: string; hint
       { key: 'spaceAfterPunct', label: 'Space after punctuation', hint: 'a,b becomes a, b (, ; ! ?)' },
       { key: 'doubleSpacePeriod', label: 'Double space adds a period', hint: 'word␣␣ becomes word. ' },
       { key: 'trimSpaceBeforePunct', label: 'No space before punctuation', hint: 'word , becomes word,' },
+      { key: 'autocomplete', label: 'Word autocomplete', hint: 'Suggest words from your past prompts under the box' },
     ],
   },
 ]
@@ -39,6 +41,11 @@ const GROUPS: { title: string; items: { key: keyof Settings; label: string; hint
 const PANE = 'rich-prompt-settings'
 const settingsAtom = atom({ plugin: 'rich-prompt', key: 'settings' } as const, DEFAULTS, { shape: 'settings-1' })
 let current: Settings = DEFAULTS
+let words: Record<string, number> = {}
+const SEED = ['implementation', 'authentication', 'authorization', 'configuration', 'documentation', 'integration', 'organization', 'performance', 'refactor', 'regression', 'migration', 'permission']
+const learn = (text: string) => {
+  for (const w of text.toLowerCase().match(/[\p{L}][\p{L}'’-]{3,}/gu) ?? []) words[w] = (words[w] ?? 0) + 1
+}
 
 const WORD = /[\p{L}\p{N})\]"'’]/u
 const SENT = /[.!?]["')\]]*\s+$/
@@ -297,9 +304,33 @@ export const register: Register = on => {
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('settings')
     current = { ...DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {}) }
+    const known = await $.store.get('words')
+    words = known && typeof known === 'object' ? (known as Record<string, number>) : {}
     await update($, settingsAtom, () => current)
     await $.command.register({ name: 'rich-prompt', description: 'Rich prompt: `settings` opens the settings pane' })
     return next(e)
+  })
+
+  on('prompt.submit', async ($, e, next) => {
+    learn(e.text)
+    await $.store.set('words', words)
+    return next(e)
+  })
+
+  on('prompt.autocomplete', async (_$, e, next) => {
+    const base = await next(e)
+    if (!current.autocomplete || e.token.length < 2 || /^[\/@!#]/.test(e.token)) return base
+    const lower = e.token.toLowerCase()
+    const seen: Record<string, number> = { ...words }
+    for (const w of SEED) seen[w] ??= 0
+    for (const w of e.text.toLowerCase().match(/[\p{L}][\p{L}'’-]{3,}/gu) ?? []) seen[w] = (seen[w] ?? 0) + 1
+    const caps = e.token[0] !== lower[0]
+    const mine = Object.keys(seen)
+      .filter(w => w.startsWith(lower) && w !== lower)
+      .sort((a, b) => seen[b] - seen[a] || a.length - b.length)
+      .slice(0, 5)
+      .map(w => ({ text: caps ? w[0].toUpperCase() + w.slice(1) : w, description: 'rich-prompt' }))
+    return { suggestions: [...base.suggestions, ...mine] }
   })
 
   on('command.run', { command: 'rich-prompt' }, async ($, e) => {

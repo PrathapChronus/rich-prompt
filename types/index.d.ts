@@ -7,6 +7,7 @@ export type Settings = {
   spaceAfterPunct: boolean
   doubleSpacePeriod: boolean
   trimSpaceBeforePunct: boolean
+  autocomplete: boolean
 }
 
 declare module 'claude-code' {
