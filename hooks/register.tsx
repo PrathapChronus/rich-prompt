@@ -59,9 +59,7 @@ const startsSentence = (before: string) => {
   const line = before.slice(ls)
   const body = line.replace(/^\s*(?:(?:[-*+]|\d+\.|[A-Za-z]\.)\s+)?/, '')
   if (body) return SENT.test(body) && !ABBR.test(body)
-  if (line.trim() || ls === 0) return true
-  const prev = before.slice(lineStartOf(before, ls - 1), ls - 1).trimEnd()
-  return prev === '' || /[.!?:]["')\]]*$/.test(prev)
+  return true
 }
 
 const smart = (e: PromptEditInput, s: Settings): PromptEditInput | { text: string; cursor: number } | undefined => {

@@ -146,7 +146,7 @@ test('does not capitalize mid-sentence, slash commands, abbreviations or code', 
   expect((await typeWith(smartOn, 'Hello ', 'w')).text).toBe('Hello w')
   expect((await typeWith(smartOn, '/', 'h')).text).toBe('/h')
   expect((await typeWith(smartOn, 'use e.g. ', 'x')).text).toBe('use e.g. x')
-  expect((await typeWith(smartOn, 'wrap\n', 'x')).text).toBe('wrap\nx')
+  expect((await typeWith(smartOn, 'wrap\n', 'x')).text).toBe('wrap\nX')
   expect((await typeWith(smartOn, '```\n', 'x')).text).toBe('```\nx')
   expect((await typeWith(smartOn, 'call `', 'x')).text).toBe('call `x')
 })
