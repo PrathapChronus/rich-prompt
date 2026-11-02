@@ -13,7 +13,7 @@ export const DEFAULTS: Settings = {
   spaceAfterPunct: false,
   doubleSpacePeriod: false,
   trimSpaceBeforePunct: false,
-  autocomplete: true,
+  autocomplete: false,
 }
 
 const GROUPS: { title: string; items: { key: keyof Settings; label: string; hint: string }[] }[] = [
@@ -42,6 +42,9 @@ const PANE = 'rich-prompt-settings'
 const settingsAtom = atom({ plugin: 'rich-prompt', key: 'settings' } as const, DEFAULTS, { shape: 'settings-1' })
 let current: Settings = DEFAULTS
 let words: Record<string, number> = {}
+// Rows only follow typing, never cursor moves or recalls, so arrowing through text stays quiet
+let typing = false
+let offered: { text: string; cursor: number }[] = []
 const SEED = ['implementation', 'authentication', 'authorization', 'configuration', 'documentation', 'integration', 'organization', 'performance', 'refactor', 'regression', 'migration', 'permission']
 const learn = (text: string) => {
   for (const w of text.toLowerCase().match(/[\p{L}][\p{L}'’-]{3,}/gu) ?? []) words[w] = (words[w] ?? 0) + 1
@@ -299,7 +302,18 @@ export const createEditor = (settings: () => Settings) => {
 
 export const register: Register = on => {
   const edit = createEditor(() => current)
-  on('prompt.edit', ($, e, next) => edit(e, next))
+  on('prompt.edit', ($, e, next) => {
+    typing = e.inputText !== '' || e.end > e.start
+    return edit(e, next)
+  })
+
+  on('prompt.change', async ($, e, next) => {
+    const taken = e.origin.kind === 'engine' && offered.some(o => o.text === e.text && o.cursor === e.cursor)
+    typing = false
+    offered = []
+    if (taken && current.autocomplete && !/^\s/.test(e.text.slice(e.cursor))) await $.prompt.fill({ text: ' ', mode: 'insert' })
+    return next(e)
+  })
 
   on('session.start', async ($, e, next) => {
     const saved = await $.store.get('settings')
@@ -319,8 +333,8 @@ export const register: Register = on => {
 
   on('prompt.autocomplete', async ($, e, next) => {
     const base = await next(e)
-    $.ui.status(`autocomplete fired: '${e.token}' (on: ${current.autocomplete})`)
-    if (!current.autocomplete || e.token.length < 2 || /^[\/@!#]/.test(e.token)) return base
+    const atWordEnd = e.text[e.cursor] === undefined || /\s/.test(e.text[e.cursor])
+    if (!current.autocomplete || !typing || !atWordEnd || e.token.length < 2 || /^[\/@!#]/.test(e.token)) return base
     const lower = e.token.toLowerCase()
     const seen: Record<string, number> = { ...words }
     for (const w of SEED) seen[w] ??= 0
@@ -330,8 +344,9 @@ export const register: Register = on => {
       .filter(w => w.startsWith(lower) && w !== lower)
       .sort((a, b) => seen[b] - seen[a] || a.length - b.length)
       .slice(0, 5)
-      .map(w => ({ text: caps ? w[0].toUpperCase() + w.slice(1) : w, description: 'rich-prompt' }))
-    return { suggestions: [...base.suggestions, ...mine] }
+      .map(w => (caps ? w[0].toUpperCase() + w.slice(1) : w))
+    offered = mine.map(w => ({ text: e.text.slice(0, e.start) + w + e.text.slice(e.cursor), cursor: e.start + w.length }))
+    return { suggestions: [...base.suggestions, ...mine.map(text => ({ text, description: 'rich-prompt' }))] }
   })
 
   on('command.run', { command: 'rich-prompt' }, async ($, e) => {
