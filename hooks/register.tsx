@@ -317,8 +317,9 @@ export const register: Register = on => {
     return next(e)
   })
 
-  on('prompt.autocomplete', async (_$, e, next) => {
+  on('prompt.autocomplete', async ($, e, next) => {
     const base = await next(e)
+    $.ui.status(`autocomplete fired: '${e.token}' (on: ${current.autocomplete})`)
     if (!current.autocomplete || e.token.length < 2 || /^[\/@!#]/.test(e.token)) return base
     const lower = e.token.toLowerCase()
     const seen: Record<string, number> = { ...words }
