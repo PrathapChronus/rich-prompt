@@ -1,4 +1,101 @@
+import { atom, read, update } from 'claude-code'
 import type { PromptEditInput, PromptEditResult, Register } from 'claude-code'
+
+import type { Settings } from '../types'
+
+// Editor behaviours that predate the settings pane stay on; the mobile-keyboard ones are opt-in.
+export const DEFAULTS: Settings = {
+  lists: true,
+  indent: true,
+  pairs: true,
+  capitalize: false,
+  capitalizeI: false,
+  spaceAfterPunct: false,
+  doubleSpacePeriod: false,
+  trimSpaceBeforePunct: false,
+}
+
+const GROUPS: { title: string; items: { key: keyof Settings; label: string; hint: string }[] }[] = [
+  {
+    title: 'Editor',
+    items: [
+      { key: 'lists', label: 'Lists', hint: 'Continue, nest, renumber and end bullets and numbers' },
+      { key: 'indent', label: 'Auto-indent', hint: 'New lines keep the leading whitespace' },
+      { key: 'pairs', label: 'Auto-pair', hint: '( [ ` close themselves and step over' },
+    ],
+  },
+  {
+    title: 'Smart keyboard',
+    items: [
+      { key: 'capitalize', label: 'Capitalize sentences', hint: 'First letter of a sentence or line' },
+      { key: 'capitalizeI', label: 'Capitalize "i"', hint: 'i, i\'m, i\'ll become I' },
+      { key: 'spaceAfterPunct', label: 'Space after punctuation', hint: 'a,b becomes a, b (, ; ! ?)' },
+      { key: 'doubleSpacePeriod', label: 'Double space adds a period', hint: 'word␣␣ becomes word. ' },
+      { key: 'trimSpaceBeforePunct', label: 'No space before punctuation', hint: 'word , becomes word,' },
+    ],
+  },
+]
+
+const PANE = 'rich-prompt-settings'
+const settingsAtom = atom({ plugin: 'rich-prompt', key: 'settings' } as const, DEFAULTS, { shape: 'settings-1' })
+let current: Settings = DEFAULTS
+
+const WORD = /[\p{L}\p{N})\]"'’]/u
+const SENT = /[.!?]["')\]]*\s+$/
+const ABBR = /\b(?:e\.g|i\.e|etc|vs|mr|mrs|ms|dr|no)\.\s+$/i
+const PLAIN = /^[\p{L}\p{N}'’"\-,;!?]+$/u
+const AFTER_I = /[\s(\["'“]/
+const I_TRIGGERS = [' ', ',', '!', '?', ';', "'", '’']
+
+const lineStartOf = (t: string, at: number) => (at === 0 ? 0 : t.lastIndexOf('\n', at - 1) + 1)
+
+const inCode = (before: string) => {
+  const ls = lineStartOf(before, before.length)
+  return (before.slice(0, ls).match(FENCE)?.length ?? 0) % 2 === 1 || (before.slice(ls).match(/`/g)?.length ?? 0) % 2 === 1
+}
+
+const startsSentence = (before: string) => {
+  const ls = lineStartOf(before, before.length)
+  const line = before.slice(ls)
+  const body = line.replace(/^\s*(?:(?:[-*+]|\d+\.|[A-Za-z]\.)\s+)?/, '')
+  if (body) return SENT.test(body) && !ABBR.test(body)
+  if (line.trim() || ls === 0) return true
+  const prev = before.slice(lineStartOf(before, ls - 1), ls - 1).trimEnd()
+  return prev === '' || /[.!?:]["')\]]*$/.test(prev)
+}
+
+const smart = (e: PromptEditInput, s: Settings): PromptEditInput | { text: string; cursor: number } | undefined => {
+  const t = e.inputText
+  const i = e.start
+  const prev = e.text[i - 1]
+  const before = e.text.slice(0, i)
+  if (inCode(before)) return
+  const loneI = prev === 'i' && (i < 2 || AFTER_I.test(e.text[i - 2]))
+  const swapI = { ...e, text: before.slice(0, -1) + 'I' + e.text.slice(i) }
+
+  if (t === ' ') {
+    const next_ = e.text[i]
+    if (s.doubleSpacePeriod && prev === ' ' && WORD.test(e.text[i - 2] ?? '') && (next_ === undefined || /\s/.test(next_))) {
+      return { text: before.slice(0, -1) + '. ' + e.text.slice(i), cursor: i + 1 }
+    }
+    if (s.capitalizeI && loneI) return swapI
+    return
+  }
+
+  if (s.capitalizeI && loneI && I_TRIGGERS.includes(t)) return swapI
+
+  if (s.trimSpaceBeforePunct && ',;!?'.includes(t) && prev === ' ' && WORD.test(e.text[i - 2] ?? '')) {
+    return { text: before.slice(0, -1) + t + e.text.slice(e.end), cursor: i }
+  }
+
+  if (/^\p{L}$/u.test(t)) {
+    const tok = before.slice(Math.max(before.lastIndexOf(' '), before.lastIndexOf('\n')) + 1)
+    const spaced = s.spaceAfterPunct && !!prev && ',;!?'.includes(prev) && tok.length > 1 && PLAIN.test(tok) && WORD.test(e.text[i - 2] ?? '')
+    const lead = spaced ? ' ' : ''
+    const up = s.capitalize && /^\p{Ll}$/u.test(t) && startsSentence(before + lead) ? t.toUpperCase() : t
+    if (lead || up !== t) return { ...e, inputText: lead + up }
+  }
+}
 
 const ITEM = /^(\s*)(?:([-*+])|(\d+|[A-Za-z])\.)\s+/
 const PAIRS: Record<string, string> = { '(': ')', '[': ']', '`': '`' }
@@ -82,7 +179,7 @@ const outdent = (e: PromptEditInput, lineStart: number, m: RegExpExecArray) => {
   return { text: out, cursor: lineStart + prefix.length }
 }
 
-const listPrefix = (e: PromptEditInput, upto = e.start) => {
+const listPrefixAt = (e: PromptEditInput, upto = e.start) => {
   const lineStart = e.text.lastIndexOf('\n', e.start - 1) + 1
   const before = e.text.slice(lineStart, upto)
   if (isBlank(before)) return { lineStart }
@@ -91,13 +188,18 @@ const listPrefix = (e: PromptEditInput, upto = e.start) => {
   return { lineStart, before, m }
 }
 
-export const createEditor = () => {
+export const createEditor = (settings: () => Settings) => {
   let armed: Armed | undefined
   let spaced: Spaced | undefined
 
   const edit = async (e: PromptEditInput, next: Next, ats: number[], spaced: boolean) => {
+    const s = settings()
     const typed = e.inputText
     const isInsert = e.start === e.end && typed.length === 1 && (e.key?.key === typed || (typed === ' ' && e.key?.key === 'space'))
+    const listPrefix = (e: PromptEditInput, upto?: number) => {
+      const p = listPrefixAt(e, upto)
+      return s.lists ? p : { ...p, m: undefined }
+    }
 
     if (typed === '\n') {
       const { lineStart, before, m } = listPrefix(e)
@@ -107,7 +209,7 @@ export const createEditor = () => {
           if (m[1]) return { r: outdent(e, lineStart, m), ats }
           return { r: { text: e.text.slice(0, lineStart) + e.text.slice(e.end), cursor: lineStart }, ats }
         }
-        const lead = m ? (m[2] || succ(m[3]) ? `${m[1]}${nextMarker(m)} ` : m[1]) : /^\s*/.exec(before)![0]
+        const lead = m ? (m[2] || succ(m[3]) ? `${m[1]}${nextMarker(m)} ` : m[1]) : s.indent ? /^\s*/.exec(before)![0] : ''
         if (lead) {
           const r = await next({ ...e, inputText: '\n' + lead })
           if (!m?.[3]) return { r, ats }
@@ -157,7 +259,7 @@ export const createEditor = () => {
     }
 
     const closer = PAIRS[typed]
-    if (isInsert && closer) {
+    if (s.pairs && isInsert && closer) {
       const prev = e.text[e.start - 1]
       const next_ = e.text[e.start]
       const okBefore = typed !== '`' || prev === undefined || BEFORE_OPENER.test(prev)
@@ -167,6 +269,9 @@ export const createEditor = () => {
         return { r: { ...r, cursor: r.cursor - 1 }, ats, added: e.start + 1 }
       }
     }
+
+    const out = isInsert ? smart(e, s) : undefined
+    if (out) return { r: 'inputText' in out ? await next(out) : out, ats }
 
     return { r: await next(e), ats }
   }
@@ -188,6 +293,50 @@ export const createEditor = () => {
 }
 
 export const register: Register = on => {
-  const edit = createEditor()
+  const edit = createEditor(() => current)
   on('prompt.edit', ($, e, next) => edit(e, next))
+
+  on('session.start', async ($, e, next) => {
+    const saved = await $.store.get('settings')
+    current = { ...DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {}) }
+    await update($, settingsAtom, () => current)
+    await $.command.register({ name: 'rich-settings', description: 'Open the rich-prompt settings pane' })
+    return next(e)
+  })
+
+  on('command.run', { command: 'rich-settings' }, async $ => {
+    await $.ui.open({ id: PANE, title: 'Rich prompt' })
+    return { text: 'Rich prompt settings opened.' }
+  })
+
+  on('ui.render', { component: 'Pane', requestId: PANE }, async ($, e) => {
+    const { Box, Text, Button } = $.ui.resolve(e)
+    const s = await read($, settingsAtom)
+    const save = async (next: Settings) => {
+      current = next
+      await $.store.set('settings', next)
+      await update($, settingsAtom, () => next)
+    }
+
+    return (
+      <Box flexDirection="column">
+        {GROUPS.map(group => (
+          <Box key={group.title} flexDirection="column" marginBottom={1}>
+            <Text bold>{group.title}</Text>
+            {group.items.map(item => (
+              <Box key={item.key} flexDirection="column">
+                <Button key={item.key} onPress={() => save({ ...current, [item.key]: !current[item.key] })}>
+                  {s[item.key] ? '[x]' : '[ ]'} {item.label}
+                </Button>
+                <Text dimColor>{'    ' + item.hint}</Text>
+              </Box>
+            ))}
+          </Box>
+        ))}
+        <Button key="reset" onPress={() => save(DEFAULTS)}>
+          Reset to defaults
+        </Button>
+      </Box>
+    )
+  })
 }

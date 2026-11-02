@@ -30,6 +30,24 @@ It's a Claude Code **mod**: nothing to run or invoke. Once it's installed, the p
 
 `│` is the cursor. <kbd>Shift</kbd>+<kbd>Enter</kbd> means whatever key your terminal uses for a newline in the prompt.
 
+### Smart keyboard (off by default)
+
+Mobile-keyboard niceties. Turn each on in the settings pane: run `/rich-settings`.
+
+| You type | You get |
+|---|---|
+| `h` at the start of a prompt, line, bullet, or after `. ! ?` | `H` (**Capitalize sentences**) |
+| `i `, `i'm` | `I `, `I'm` (**Capitalize "i"**) |
+| `Well,` then `i` | `Well, i` (**Space after punctuation**, for `, ; ! ?`) |
+| `done` <kbd>Space</kbd> <kbd>Space</kbd> | `done. ` (**Double space adds a period**) |
+| `well` <kbd>Space</kbd> `,` | `well,` (**No space before punctuation**) |
+
+None of them act inside code fences or `` `inline code` ``, and the spacing rule skips URLs, paths and calls like `f(a,b)`.
+
+### Settings
+
+`/rich-settings` opens a side pane with a checkbox per feature, including the editor ones above (lists, auto-indent, auto-pair). Choices persist across sessions. The editor features default on, the smart keyboard ones off.
+
 ### Things it leaves alone
 
 - Two spaces after an empty marker only nest when there is an item to nest under at the same level; otherwise it is a plain space.

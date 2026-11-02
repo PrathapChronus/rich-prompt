@@ -1,25 +1,25 @@
 import { test, expect } from 'claude-code/testing'
-import { createEditor } from './register'
+import { createEditor, DEFAULTS } from './register'
 
 const engine = async (e: any) => ({ text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length })
 const key = (text: string, k: string, pos = text.length) => ({ origin: { kind: 'composer' }, text, cursor: pos, start: pos, end: pos, inputText: k, key: { key: k } }) as any
 const run = (ed: ReturnType<typeof createEditor>, e: any) => ed(e, engine)
 
 test('list continuation, numbering, end on empty item', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect(await run(ed, key('- a', '\n'))).toEqual({ text: '- a\n- ', cursor: 6 })
   expect(await run(ed, key('1. a', '\n'))).toEqual({ text: '1. a\n2. ', cursor: 8 })
   expect(await run(ed, key('- a\n- ', '\n'))).toEqual({ text: '- a\n', cursor: 4 })
 })
 test('Enter on an empty nested item outdents to the parent level before ending the list', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect(await run(ed, key('- a\n  - b\n  - ', '\n'))).toEqual({ text: '- a\n  - b\n- ', cursor: 12 })
   expect((await run(ed, key('1. a\n   - ', '\n'))).text).toBe('1. a\n2. ')
   expect((await run(ed, key('  - ', '\n'))).text).toBe('- ')
   expect((await run(ed, key('- a\n    - b\n        - ', '\n'))).text).toBe('- a\n    - b\n    - ')
 })
 test('Backspace right after an empty marker outdents a nested item, removes a top-level one', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   const bs = (text: string, pos = text.length) => ({ ...key(text, ''), cursor: pos, start: pos - 1, end: pos, inputText: '', key: { key: 'backspace' } })
   expect(await run(ed, bs('- a\n- '))).toEqual({ text: '- a\n', cursor: 4 })
   expect((await run(ed, bs('1. a\n  2. '))).text).toBe('1. a\n2. ')
@@ -30,14 +30,14 @@ test('Backspace right after an empty marker outdents a nested item, removes a to
   expect((await run(ed, bs('```\n- '))).text).toBe('```\n-')
 })
 test('inserting a numbered item renumbers the items after it, nested ones untouched', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect(await run(ed, key('1. a\n2. b\n3. c', '\n', 4))).toEqual({ text: '1. a\n2. \n3. b\n4. c', cursor: 8 })
   expect((await run(ed, key('1. a\n   - x\n2. b\n\n7. z', '\n', 4))).text).toBe('1. a\n2. \n   - x\n3. b\n\n7. z')
   expect((await run(ed, key('1. a\n- b', '\n', 4))).text).toBe('1. a\n2. \n- b')
   expect((await run(ed, key('1. a\n   1. x\n   2. y\n   3. ', '\n'))).text).toBe('1. a\n   1. x\n   2. y\n2. ')
 })
 test('letter lists continue, renumber, outdent; z ends the sequence', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect(await run(ed, key('a. x', '\n'))).toEqual({ text: 'a. x\nb. ', cursor: 8 })
   expect((await run(ed, key('B. x', '\n'))).text).toBe('B. x\nC. ')
   expect((await run(ed, key('a. x\nb. y\nc. z', '\n', 4))).text).toBe('a. x\nb. \nc. y\nd. z')
@@ -48,7 +48,7 @@ test('letter lists continue, renumber, outdent; z ends the sequence', async () =
 test('two spaces after an empty marker nest it: markers follow the parent, indent is the parent content column', async () => {
   const sp = (text: string, pos = text.length) => ({ ...key(text, ' ', pos), key: { key: 'space' } })
   const twice = async (text: string, pos = text.length) => {
-    const ed = createEditor()
+    const ed = createEditor(() => DEFAULTS)
     const first = await run(ed, sp(text, pos))
     return run(ed, sp(first.text, first.cursor))
   }
@@ -65,23 +65,23 @@ test('two spaces after an empty marker nest it: markers follow the parent, inden
   expect((await twice('- a')).text).toBe('- a  ')
   expect((await twice('```\n- a\n- ')).text).toBe('```\n- a\n-   ')
   expect((await twice('1. a\n2. \n3. c', 8)).text).toBe('1. a\n   a. \n2. c')
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect((await run(ed, sp('1. a\n2. '))).text).toBe('1. a\n2.  ')
   await run(ed, key('x', 'y'))
   expect((await run(ed, sp('1. a\n2.  '))).text).toBe('1. a\n2.   ')
 })
 test('Enter between marker and text keeps the item; blank lines do not accumulate indent', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect((await run(ed, key('- abc', '\n', 2))).text).toBe('- \n- abc')
   expect((await run(ed, key('    ', '\n'))).text).toBe('    \n')
   expect((await run(ed, key('  code', '\n'))).text).toBe('  code\n  ')
 })
 test('no list continuation inside a fence', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect((await run(ed, key('```\n- a', '\n'))).text).toBe('```\n- a\n')
 })
 test('pairs, types over its own closer, paired backspace', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect(await run(ed, key('', '('))).toEqual({ text: '()', cursor: 1 })
   expect(await run(ed, key('()', ')', 1))).toEqual({ text: '()', cursor: 2 })
   await run(ed, key('', '['))
@@ -89,14 +89,14 @@ test('pairs, types over its own closer, paired backspace', async () => {
   expect(await run(ed, bs)).toEqual({ text: '', cursor: 0 })
 })
 test('foreign closers are not swallowed; stale state is cleared', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect(await run(ed, key('a)', ')', 1))).toEqual({ text: 'a))', cursor: 2 })
   await run(ed, key('', '('))
   await run(ed, key('(', 'x', 1))
   expect(await run(ed, key('(x)', ')', 2))).toEqual({ text: '(x))', cursor: 3 })
 })
 test('closer still steps over after typing inside the pair, nested pairs too', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   await run(ed, key('', '('))
   await run(ed, key('()', 'x', 1))
   expect(await run(ed, key('(x)', ')', 2))).toEqual({ text: '(x)', cursor: 3 })
@@ -107,7 +107,7 @@ test('closer still steps over after typing inside the pair, nested pairs too', a
   expect(await run(ed, key('([a])', ')', 4))).toEqual({ text: '([a])', cursor: 5 })
 })
 test('backspace inside a non-empty pair deletes one char; typing after the pair forgets it', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   await run(ed, key('', '('))
   await run(ed, key('()', 'x', 1))
   const bs = { ...key('(x)', ''), cursor: 2, start: 1, end: 2, inputText: '', key: { key: 'backspace' } }
@@ -118,10 +118,60 @@ test('backspace inside a non-empty pair deletes one char; typing after the pair 
   expect((await run(ed, key('() ', ')', 1))).text).toBe('()) ')
 })
 test('backquote pairs only at word start; never on paste or selection', async () => {
-  const ed = createEditor()
+  const ed = createEditor(() => DEFAULTS)
   expect((await run(ed, key('it', '`'))).text).toBe('it`')
   expect((await run(ed, key('a ', '`'))).text).toBe('a ``')
   expect((await run(ed, key('foo', '(', 0))).text).toBe('(foo')
   expect((await run(ed, { ...key('', '('), key: undefined })).text).toBe('(')
   expect((await run(ed, { ...key('ab', '('), start: 0, end: 2 })).text).toBe('(')
+})
+const smartOn = { ...DEFAULTS, capitalize: true, capitalizeI: true, spaceAfterPunct: true, doubleSpacePeriod: true, trimSpaceBeforePunct: true }
+const typeWith = (s: typeof DEFAULTS, text: string, k: string, pos = text.length) =>
+  run(createEditor(() => s), { ...key(text, k, pos), key: { key: k === ' ' ? 'space' : k } })
+
+test('smart keyboard features are off by default', async () => {
+  expect((await typeWith(DEFAULTS, '', 'h')).text).toBe('h')
+  expect((await typeWith(DEFAULTS, 'a,', 'b')).text).toBe('a,b')
+  expect((await typeWith(DEFAULTS, 'a ', ' ')).text).toBe('a  ')
+  expect((await typeWith(DEFAULTS, 'so i', ' ')).text).toBe('so i ')
+})
+test('capitalizes the first letter of a prompt, line, list item and sentence', async () => {
+  expect((await typeWith(smartOn, '', 'h')).text).toBe('H')
+  expect((await typeWith(smartOn, 'Hi. ', 'w')).text).toBe('Hi. W')
+  expect((await typeWith(smartOn, 'Hi! "Ok?" ', 'w')).text).toBe('Hi! "Ok?" W')
+  expect((await typeWith(smartOn, '- ', 'b')).text).toBe('- B')
+  expect((await typeWith(smartOn, 'Done.\n', 'n')).text).toBe('Done.\nN')
+})
+test('does not capitalize mid-sentence, slash commands, abbreviations or code', async () => {
+  expect((await typeWith(smartOn, 'Hello ', 'w')).text).toBe('Hello w')
+  expect((await typeWith(smartOn, '/', 'h')).text).toBe('/h')
+  expect((await typeWith(smartOn, 'use e.g. ', 'x')).text).toBe('use e.g. x')
+  expect((await typeWith(smartOn, 'wrap\n', 'x')).text).toBe('wrap\nx')
+  expect((await typeWith(smartOn, '```\n', 'x')).text).toBe('```\nx')
+  expect((await typeWith(smartOn, 'call `', 'x')).text).toBe('call `x')
+})
+test('i becomes I when it stands alone', async () => {
+  expect((await typeWith(smartOn, 'Then i', ' ')).text).toBe('Then I ')
+  expect((await typeWith(smartOn, 'Then i', "'")).text).toBe("Then I'")
+  expect((await typeWith(smartOn, 'Then hi', ' ')).text).toBe('Then hi ')
+})
+test('inserts the space after , ; ! ? but leaves URLs and code alone', async () => {
+  expect((await typeWith(smartOn, 'Well,', 'i')).text).toBe('Well, i')
+  expect((await typeWith(smartOn, 'Hi,', 'x')).text).toBe('Hi, x')
+  expect((await typeWith(smartOn, 'Hi! Ok?', 'y')).text).toBe('Hi! Ok? Y')
+  expect((await typeWith(smartOn, 'a.com?', 'q')).text).toBe('a.com?q')
+  expect((await typeWith(smartOn, 'f(a,', 'b')).text).toBe('f(a,b')
+  expect((await typeWith(smartOn, 'x/y,', 'b')).text).toBe('x/y,b')
+})
+test('double space adds a period; space before punctuation is trimmed', async () => {
+  expect(await typeWith(smartOn, 'done ', ' ')).toEqual({ text: 'done. ', cursor: 6 })
+  expect((await typeWith(smartOn, 'done. ', ' ')).text).toBe('done.  ')
+  expect(await typeWith(smartOn, 'well ', ',')).toEqual({ text: 'well,', cursor: 5 })
+  expect((await typeWith(smartOn, 'well  ', ',')).text).toBe('well  ,')
+})
+test('each editor setting can be turned off', async () => {
+  const off = { ...DEFAULTS, lists: false, indent: false, pairs: false }
+  expect((await typeWith(off, '- a', '\n')).text).toBe('- a\n')
+  expect((await typeWith(off, '  a', '\n')).text).toBe('  a\n')
+  expect((await typeWith(off, '', '(')).text).toBe('(')
 })
