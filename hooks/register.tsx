@@ -33,7 +33,7 @@ const GROUPS: { title: string; items: { key: keyof Settings; label: string; hint
       { key: 'spaceAfterPunct', label: 'Space after punctuation', hint: 'a,b becomes a, b (, ; ! ?)' },
       { key: 'doubleSpacePeriod', label: 'Double space adds a period', hint: 'word␣␣ becomes word. ' },
       { key: 'trimSpaceBeforePunct', label: 'No space before punctuation', hint: 'word , becomes word,' },
-      { key: 'autocomplete', label: 'Word autocomplete', hint: 'Suggest words from your past prompts under the box' },
+      { key: 'autocomplete', label: 'Word autocomplete', hint: 'Suggest words above the box; learns from your prompts, stored locally' },
     ],
   },
 ]
@@ -45,9 +45,27 @@ let words: Record<string, number> = {}
 // Rows only follow typing, never cursor moves or recalls, so arrowing through text stays quiet
 let typing = false
 let offered: { text: string; cursor: number }[] = []
-const SEED = ['implementation', 'authentication', 'authorization', 'configuration', 'documentation', 'integration', 'organization', 'performance', 'refactor', 'regression', 'migration', 'permission']
+let dict: string[] | undefined
+const WORDS = /[\p{L}][\p{L}'’-]{3,}/gu
+
+export const suggest = (token: string, text: string, learned: Record<string, number>, dictionary: string[], max = 5) => {
+  const lower = token.toLowerCase()
+  const own = { ...learned }
+  for (const w of text.toLowerCase().match(WORDS) ?? []) own[w] = (own[w] ?? 0) + 1
+  const out: string[] = []
+  const add = (w: string) => w !== lower && !out.includes(w) && out.push(w)
+  Object.keys(own)
+    .filter(w => w.startsWith(lower))
+    .sort((a, b) => own[b] - own[a] || a.length - b.length)
+    .slice(0, max)
+    .forEach(add)
+  for (let i = 0; out.length < max && i < dictionary.length; i++) if (dictionary[i].startsWith(lower)) add(dictionary[i])
+  const caps = token[0] !== lower[0]
+  return out.slice(0, max).map(w => (caps ? w[0].toUpperCase() + w.slice(1) : w))
+}
+
 const learn = (text: string) => {
-  for (const w of text.toLowerCase().match(/[\p{L}][\p{L}'’-]{3,}/gu) ?? []) words[w] = (words[w] ?? 0) + 1
+  for (const w of text.toLowerCase().match(WORDS) ?? []) words[w] = (words[w] ?? 0) + 1
 }
 
 const WORD = /[\p{L}\p{N})\]"'’]/u
@@ -311,7 +329,11 @@ export const register: Register = on => {
     const taken = e.origin.kind === 'engine' && offered.some(o => o.text === e.text && o.cursor === e.cursor)
     typing = false
     offered = []
-    if (taken && current.autocomplete && !/^\s/.test(e.text.slice(e.cursor))) await $.prompt.fill({ text: ' ', mode: 'insert' })
+    if (taken && current.autocomplete) {
+      const after = e.text[e.cursor]
+      if (after === ' ') await $.prompt.fill({ text: '', mode: 'insert', cursor: e.cursor + 1 })
+      else if (after === undefined) await $.prompt.fill({ text: ' ', mode: 'insert' })
+    }
     return next(e)
   })
 
@@ -321,30 +343,34 @@ export const register: Register = on => {
     const known = await $.store.get('words')
     words = known && typeof known === 'object' ? (known as Record<string, number>) : {}
     await update($, settingsAtom, () => current)
-    await $.command.register({ name: 'rich-prompt', description: 'Rich prompt: `settings` opens the settings pane' })
+    $.ui.status(undefined)
+    await $.command
+      .register({ name: 'rich-prompt', description: 'Rich prompt: `settings` opens the settings pane' })
+      .catch(() => undefined)
     return next(e)
   })
 
   on('prompt.submit', async ($, e, next) => {
+    if (!current.autocomplete) return next(e)
     learn(e.text)
+    const top = Object.entries(words).sort((a, b) => b[1] - a[1]).slice(0, 5000)
+    words = Object.fromEntries(top)
     await $.store.set('words', words)
     return next(e)
   })
 
   on('prompt.autocomplete', async ($, e, next) => {
     const base = await next(e)
-    const atWordEnd = e.text[e.cursor] === undefined || /\s/.test(e.text[e.cursor])
+    const atWordEnd = e.text[e.cursor] === undefined || /[\s.,;:!?)\]}'"`]/.test(e.text[e.cursor])
     if (!current.autocomplete || !typing || !atWordEnd || e.token.length < 2 || /^[\/@!#]/.test(e.token)) return base
-    const lower = e.token.toLowerCase()
-    const seen: Record<string, number> = { ...words }
-    for (const w of SEED) seen[w] ??= 0
-    for (const w of e.text.toLowerCase().match(/[\p{L}][\p{L}'’-]{3,}/gu) ?? []) seen[w] = (seen[w] ?? 0) + 1
-    const caps = e.token[0] !== lower[0]
-    const mine = Object.keys(seen)
-      .filter(w => w.startsWith(lower) && w !== lower)
-      .sort((a, b) => seen[b] - seen[a] || a.length - b.length)
-      .slice(0, 5)
-      .map(w => (caps ? w[0].toUpperCase() + w.slice(1) : w))
+    dict ??= await $.fs
+      .read(`${$.plugin.root}/hooks/words.txt`)
+      .then(t => (typeof t === 'string' ? t.split('\n').filter(Boolean) : []))
+      .catch(() => {
+        $.ui.log('rich-prompt: hooks/words.txt unreadable, dictionary off')
+        return []
+      })
+    const mine = suggest(e.token, e.text, words, dict)
     offered = mine.map(w => ({ text: e.text.slice(0, e.start) + w + e.text.slice(e.cursor), cursor: e.start + w.length }))
     return { suggestions: [...base.suggestions, ...mine.map(text => ({ text, description: 'rich-prompt' }))] }
   })
@@ -359,6 +385,10 @@ export const register: Register = on => {
     const { Box, Text, Button } = $.ui.resolve(e)
     const s = await read($, settingsAtom)
     const save = async (next: Settings) => {
+      if (current.autocomplete && !next.autocomplete) {
+        words = {}
+        await $.store.delete('words')
+      }
       current = next
       await $.store.set('settings', next)
       await update($, settingsAtom, () => next)

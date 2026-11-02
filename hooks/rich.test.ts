@@ -1,5 +1,5 @@
 import { test, expect } from 'claude-code/testing'
-import { createEditor, DEFAULTS } from './register'
+import { createEditor, DEFAULTS, suggest } from './register'
 
 const engine = async (e: any) => ({ text: e.text.slice(0, e.start) + e.inputText + e.text.slice(e.end), cursor: e.start + e.inputText.length })
 const key = (text: string, k: string, pos = text.length) => ({ origin: { kind: 'composer' }, text, cursor: pos, start: pos, end: pos, inputText: k, key: { key: k } }) as any
@@ -174,4 +174,12 @@ test('each editor setting can be turned off', async () => {
   expect((await typeWith(off, '- a', '\n')).text).toBe('- a\n')
   expect((await typeWith(off, '  a', '\n')).text).toBe('  a\n')
   expect((await typeWith(off, '', '(')).text).toBe('(')
+})
+test('suggestions: own words first, then the dictionary in rank order; no exact match; caps follow the token', () => {
+  const dict = ['implement', 'important', 'implementation', 'imply']
+  expect(suggest('imp', '', { impressive: 3 }, dict)).toEqual(['impressive', 'implement', 'important', 'implementation', 'imply'])
+  expect(suggest('impl', '', {}, dict)).toEqual(['implement', 'implementation', 'imply'])
+  expect(suggest('imply', '', {}, dict)).toEqual([])
+  expect(suggest('Impl', 'implode implode', {}, dict)).toEqual(['Implode', 'Implement', 'Implementation', 'Imply'])
+  expect(suggest('imp', '', {}, dict, 2)).toEqual(['implement', 'important'])
 })
