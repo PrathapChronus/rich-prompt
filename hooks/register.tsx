@@ -88,8 +88,7 @@ const smart = (e: PromptEditInput, s: Settings): PromptEditInput | { text: strin
 
   if (/^\p{L}$/u.test(t)) {
     const tok = before.slice(Math.max(before.lastIndexOf(' '), before.lastIndexOf('\n')) + 1)
-    const punct = prev === '.' ? /\p{Lu}/u.test(t) : !!prev && ',;!?'.includes(prev)
-    const spaced = s.spaceAfterPunct && punct && tok.length > 1 && PLAIN.test(tok.slice(0, -1)) && WORD.test(e.text[i - 2] ?? '')
+    const spaced = s.spaceAfterPunct && !!prev && ',;!?'.includes(prev) && tok.length > 1 && PLAIN.test(tok) && WORD.test(e.text[i - 2] ?? '')
     const lead = spaced ? ' ' : ''
     const up = s.capitalize && /^\p{Ll}$/u.test(t) && startsSentence(before + lead) ? t.toUpperCase() : t
     if (lead || up !== t) return { ...e, inputText: lead + up }

@@ -38,7 +38,7 @@ Mobile-keyboard niceties. Turn each on in the settings pane: run `/rich-prompt s
 |---|---|
 | `h` at the start of a prompt, line, bullet, or after `. ! ?` | `H` (**Capitalize sentences**) |
 | `i `, `i'm` | `I `, `I'm` (**Capitalize "i"**) |
-| `Well,` then `i` | `Well, i` (**Space after punctuation**, for `, ; ! ?`, and `.` before a capital: `Done.Next` → `Done. Next`) |
+| `Well,` then `i` | `Well, i` (**Space after punctuation**, for `, ; ! ?`) |
 | `done` <kbd>Space</kbd> <kbd>Space</kbd> | `done. ` (**Double space adds a period**) |
 | `well` <kbd>Space</kbd> `,` | `well,` (**No space before punctuation**) |
 
