@@ -300,11 +300,12 @@ export const register: Register = on => {
     const saved = await $.store.get('settings')
     current = { ...DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {}) }
     await update($, settingsAtom, () => current)
-    await $.command.register({ name: 'rich-settings', description: 'Open the rich-prompt settings pane' })
+    await $.command.register({ name: 'rich-prompt', description: 'Rich prompt: `settings` opens the settings pane' })
     return next(e)
   })
 
-  on('command.run', { command: 'rich-settings' }, async $ => {
+  on('command.run', { command: 'rich-prompt' }, async ($, e) => {
+    if (e.args.trim() && e.args.trim() !== 'settings') return { text: 'Usage: /rich-prompt settings' }
     await $.ui.open({ id: PANE, title: 'Rich prompt' })
     return { text: 'Rich prompt settings opened.' }
   })

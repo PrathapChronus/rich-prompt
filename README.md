@@ -32,7 +32,7 @@ It's a Claude Code **mod**: nothing to run or invoke. Once it's installed, the p
 
 ### Smart keyboard (off by default)
 
-Mobile-keyboard niceties. Turn each on in the settings pane: run `/rich-settings`.
+Mobile-keyboard niceties. Turn each on in the settings pane: run `/rich-prompt settings`.
 
 | You type | You get |
 |---|---|
@@ -46,7 +46,7 @@ None of them act inside code fences or `` `inline code` ``, and the spacing rule
 
 ### Settings
 
-`/rich-settings` opens a side pane with a checkbox per feature, including the editor ones above (lists, auto-indent, auto-pair). Choices persist across sessions. The editor features default on, the smart keyboard ones off.
+`/rich-prompt settings` opens a side pane with a checkbox per feature, including the editor ones above (lists, auto-indent, auto-pair). Choices persist across sessions. The editor features default on, the smart keyboard ones off.
 
 ### Things it leaves alone
 
