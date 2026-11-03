@@ -362,7 +362,7 @@ export const register: Register = on => {
   on('prompt.autocomplete', async ($, e, next) => {
     const base = await next(e)
     const atWordEnd = e.text[e.cursor] === undefined || /[\s.,;:!?)\]}'"`]/.test(e.text[e.cursor])
-    if (!current.autocomplete || !typing || !atWordEnd || e.token.length < 2 || /^[\/@!#]/.test(e.token)) return base
+    if (!current.autocomplete || !typing || !atWordEnd || e.token.length < 3 || /^[\/@!#]/.test(e.token)) return base
     dict ??= await $.fs
       .read(`${$.plugin.root}/hooks/words.txt`)
       .then(t => (typeof t === 'string' ? t.split('\n').filter(Boolean) : []))

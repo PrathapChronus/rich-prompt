@@ -15,7 +15,7 @@ It's a Claude Code **mod**: nothing to run. Once it's installed, the prompt box 
 
 Off by default. Turn it on in the settings pane.
 
-While you type a word (2+ letters), up to five completions appear above the prompt box. Your own past words come first, then a bundled list of the 50,000 most common English words.
+While you type a word (3+ letters), up to five completions appear above the prompt box. Your own past words come first, then a bundled list of the 50,000 most common English words.
 
 | You do | You get |
 |---|---|
