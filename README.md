@@ -101,8 +101,9 @@ None of them act inside code fences or `` `inline code` ``, and the spacing rule
 
 ## Install
 
-Needs **Claude Code 2.1.317 or later**. Mods are on by default. On an older version, rich-prompt
-shows a warning at startup and stays off; run `claude update`.
+Needs **Claude Code 2.1.300 or later**: `prompt.autocomplete` arrived in 2.1.292 and
+`prompt.change` in 2.1.300. Mods are on by default. On an older version, rich-prompt shows a
+warning at startup and stays off; run `claude update`.
 
 ```sh
 npx skills add saimageshvar/rich-prompt -g -a claude-code
